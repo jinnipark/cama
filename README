@@ -1,5 +1,204 @@
 cama
 ====
+A simple and generic HTTP relay server designed to run inside yaws.
 
-cama is a yet another web framework that supports a transaction or session
-concept.
+How to build and run
+====================
+0. Download and build yaws (http://yaws.hyber.org).
+1. Place this package under $(YAWS_HOME)/applications/
+2. make
+3. Edit etc/yaws/yaws.conf to include:
+   ebin_dir = $(YAWS_HOME)/applications/cama/ebin
+   runmod = reloader
+   runmod = cama
+   <server localhost>
+     ...
+     appmods = <cama, cama_dispatcher>
+   </server> 
+4. Start yaws as usual.
+
+How it works
+============
+1. Basic allocation
+  The server creates a random url for a client who issues 'allocate'
+  request.  At this time, the server also sets a cookie for subsequent
+  relay operations.
+
+    PUT /cama/session HTTP/1.1
+    Host: localhost:8000
+    Content-Length: 0
+
+    HTTP/1.1 201 Created
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Location: /cama/session/snfRhUdWQo6junaRzcIeUA==
+    Set-Cookie: token="eiSbBCLVSYuJGE0QzWea6g==";
+        Path="/cama/session/snfRhUdWQo6junaRzcIeUA==";
+        Expires=Wed, 09 Jun 2021 10:18:14 GMT
+    X-Type: basic
+    Content-Length: 0
+
+2. Signaling (not specified how)
+  The url included in the response as 'Location' header should be shared with
+  another client.
+
+3. Relay operation
+  Either of the client can 'GET' or 'POST' to the 'Location' to communicate
+  with each other.  Note that those are long-polling style http requests that
+  don't respond until there is a data to be relayed or the requests themselves
+  time out.  One of the peer(host) should make requests with the cookie and
+  the other(guest) without any.  'Content-Type' header in 'POST' request
+  is always preserved in corresponding 'GET' response.
+
+    << Host is waiting for a message. >>
+
+    GET /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Cookie: token="eiSbBCLVSYuJGE0QzWea6g=="
+    Content-Length: 0
+    
+    << Once there is a POST request from the other peer. >>
+    
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+	Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Type: text/plain
+    Content-Length: 5
+
+    Hello
+
+    << Guest is sending a message. >>
+
+    POST /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Content-Type: text/plain
+    Content-Length: 5
+
+    Hello
+
+    << After the message is delivered. >>
+
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Length: 0
+    X-Bytes-Delivered: 5
+
+4. Relay operation timeout behavior
+  Both 'GET' and 'POST' request against a session might respond '504 Gateway
+  Timeout' after some time.  The timeout value is set as a server
+  configuration but can also be set by the clients as 'X-Timeout' header.
+
+    GET /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Content-Length: 0
+    X-Timeout: 30
+
+    HTTP/1.1 504 Gateway Timeout
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Length: 0
+
+5. Chunk-mode transfer
+  The client can use a chunk-mode POST to send a large data progressively.
+  In this case the receiver would also receive a chunk-mode response.
+
+    << Sender >>
+
+    POST /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Content-Type: application/binary
+    Transfer-Encoding: chunked
+
+    138
+    ................................
+    138
+    ...............................
+    4b
+    ...................
+    0
+
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    X-Bytes-Relayed: 699
+    Content-Length: 0
+
+    << Receiver >>
+
+    GET /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Cookie: token="eiSbBCLVSYuJGE0QzWea6g=="
+    Content-Length: 0
+
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Type: application/binary
+    Transfer-Encoding: chunked
+
+    138
+    ....................................
+    138
+    ...............................
+    4b
+    .....................
+    0
+
+6. Partial delivery
+  If the receiver is disconnected while receiving the chunk-mode data,
+  the sender knows how many bytes are actually delivered to the receiver
+  by the 'X-Bytes-Delivered' header value.  If the sender is disconnected
+  while sending chunks, the receiver just receives an end-of-chunk, 0.
+
+7. Secure allocation
+  The host client can optionally set 'X-Type: secure' header when allocating
+  a session.  The host should 'PUT' a permission before sharing the session
+  with the other client(guest).  The guest's endpoint IP address should be
+  set in 'X-Peer-Address' header.  Then, only the host that owns the token
+  and the guest that owns the address may use the session.
+
+    PUT /cama/session HTTP/1.1
+    Host: localhost:8000
+    X-Type: secure
+    Content-Length: 0
+
+    HTTP/1.1 201 Created
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Localhost: /cama/session/snfRhUdWQo6junaRzcIeUA==
+    X-Type: secure
+    Set-Cookie: Set-Cookie: token="eiSbBCLVSYuJGE0QzWea6g==";
+        Path="/cama/session/snfRhUdWQo6junaRzcIeUA==";
+        Expires=Wed, 09 Jun 2021 10:18:14 GMT
+    Content-Length: 0
+
+    PUT /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Cookie: token="eiSbBCLVSYuJGE0QzWea6g=="
+    X-Peer-Address: 127.0.0.1
+    Content-Length: 0
+
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Length: 0
+
+8. Deallocation
+  The host may explicitly delete the session by sending a 'DELETE' request.
+  Or the session is deleted when the token is expired.  Refer 'Set-Cookie'
+  header in the allocation response.  Any pending relay operation in the
+  session would immediately get a '410 Gone' response.
+
+    DELETE /cama/session/snfRhUdWQo6junaRzcIeUA== HTTP/1.1
+    Host: localhost:8000
+    Cookie: token="eiSbBCLVSYuJGE0QzWea6g=="
+    Content-Length: 0
+
+    HTTP/1.1 200 OK
+    Server: cama/1.0
+    Date: Tue, 15 Nov 1994 08:12:31 GMT
+    Set-Cookie: token="eiSbBCLVSYuJGE0QzWea6g==";
+        Expires=Tue, 15 Nov 1994 08:12:31 GMT
+    Content-Length: 0
+
