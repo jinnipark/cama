@@ -1,0 +1,14 @@
+{application, cama,
+ [
+  {description, "HTTP relay"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, {cama_app, []}},
+  {env, [{context, [{server, "cama/1"},
+  					{docroot, "www"},
+  					{login_timeout, 3600}]}]}
+ ]}.
