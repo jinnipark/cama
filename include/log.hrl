@@ -22,7 +22,7 @@
 
 %% @doc Evaluates Exp, prints a debug message before and after the evaluation if
 %% 'DEBUG' is defined at compile time.
--define(TRACE(Exp), ?TRACE_FUN(Exp)(error_logger:info_msg("[TRACE ~p {~s, ~p}] ~p", [self(), ?MODULE, ?LINE, ??Exp]))).
+-define(TRACE(Exp), ?TRACE_FUN(Exp)(error_logger:info_msg("~s: ~p~n[TRACE ~p] ~p", [?MODULE, ?LINE, self(), ??Exp]))).
 -define(DEBUG_FUN(Exp),
 		fun() ->
 				Var = Exp, % It's essential to bind to a Var here to avoid evaluating Exp twice. 
@@ -35,10 +35,13 @@
 				?DEBUG_OUT(Var),
 				Var
 		end).
--define(DEBUG_OUT(Msg), error_logger:info_msg("[DEBUG ~p {~s, ~p}] ~p", [self(), ?MODULE, ?LINE, Msg])).
+-define(DEBUG_OUT(Msg), error_logger:info_msg("~s: ~p~n[DEBUG ~p] ~p", [?MODULE, ?LINE, self(), Msg])).
+
 -else.
+
 -define(DEBUG(Exp), Exp).
 -define(TRACE(Exp), Exp).
+
 -endif.
 
 -define(INFO(Report), error_logger:info_report([{?MODULE, ?LINE}, Report])).

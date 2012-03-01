@@ -8,6 +8,8 @@
 %%% -------------------------------------------------------------------
 -author("Sungjin Park <jinni.park@gmail.com>").
 
+%% @doc Convert a proplist into a record.
+%% @spec ?PROPS_TO_RECORD(Props=[{atom(), term()}], Record=atom()) -> record().
 -define(PROPS_TO_RECORD(Props, Record), ?PROPS_TO_RECORD(Props, Record, #Record{})()).
 -define(PROPS_TO_RECORD(Props, Record, Default),
 		fun() ->
