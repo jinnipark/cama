@@ -1,4 +1,4 @@
-%% Author: jinni
+%% Author: Sungjin Park <jinni.park@gmail.com>
 %% Created: Feb 26, 2012
 %% Description: TODO: Add description to cama_home
 -module(cama_home).
@@ -32,13 +32,13 @@ out(Arg) ->
 						{ok, Found} -> % Cookie found
 							% Now check if it's stale or not.
 							T = ?TRACE(timer:now_diff(now(), Found#cama_guid.last_used)),
-							case T < Arg#arg.state#cama_context.login_timeout * 1000000 of
+							case T < Arg#arg.state#cama.login_timeout * 1000000 of
 								true -> % Still fresh
 									?TRACE(cama_login:update_guid(Guid)),
 									[{status, 200},
 									 cama_dispatcher:server_header(Arg),
 									 yaws_api:setcookie("guid", Guid, cama_dispatcher:base_path(Arg),
-														cama_login:quote(cama_login:age2expire(Arg#arg.state#cama_context.login_timeout))),
+														cama_login:quote(cama_login:age2expire(Arg#arg.state#cama.login_timeout))),
 									 cama_dispatcher:ssi(Arg, "home.html")];
 								_ -> % Stale
 									cama_login:delete_guid(Guid),

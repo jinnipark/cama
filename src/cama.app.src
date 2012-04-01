@@ -3,12 +3,15 @@
   {description, "HTTP relay"},
   {vsn, "1"},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib
-                 ]},
+  {applications, [kernel, stdlib]},
   {mod, {cama_app, []}},
-  {env, [{context, [{server, "cama/1"},
-  					{docroot, "www"},
-  					{login_timeout, 3600}]}]}
- ]}.
+  {env, [{cama, [{server, "cama/1"},
+  				 {docroot, "www"},
+  				 {login_timeout, 3600}
+  				]
+  		 },
+  		 {cama_session, [{timeout, 600}]}
+  		]
+  }
+ ]
+}.

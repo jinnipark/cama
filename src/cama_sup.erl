@@ -1,7 +1,16 @@
-
+%%% -------------------------------------------------------------------
+%%% Author  : Sungjin Park <jinni.park@gmail.com>
+%%% Description :
+%%%
+%%% Created : Apr 1, 2012
+%%% -------------------------------------------------------------------
 -module(cama_sup).
+-author("Sungjin Park <jinni.park@gmail.com>").
 
 -behaviour(supervisor).
+%% --------------------------------------------------------------------
+%% Include files
+%% --------------------------------------------------------------------
 
 %% API
 -export([start_link/0]).
@@ -22,7 +31,8 @@ start_link() ->
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
-
 init([]) ->
+	Env = application:get_all_env(cama),
+	Modules = proplists:get_keys(Env),
+	lists:foreach(fun(M) -> catch M:prepare() end, Modules),
     {ok, { {one_for_one, 5, 10}, []} }.
-

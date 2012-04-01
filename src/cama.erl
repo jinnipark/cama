@@ -1,27 +1,26 @@
-%% Author: jinni
+%% Author: Sungjin Park <jinni.park@gmail.com>
 %% Created: Feb 26, 2012
-%% Description: TODO: Add description to cama
+%% Description: 
 -module(cama).
 -author("Sungjin Park <jinni.park@gmail.com>").
 
 %%
 %% Include files
 %%
--include("cama_api.hrl").
--include("yaws_api.hrl").
--include("log.hrl").
 
 %%
 %% Exported Functions
 %%
--export([start/0, stop/0]).
+-export([prepare/0, start/0, stop/0]).
 
 %%
 %% API Functions
 %%
+prepare() ->
+	ok.
+
 start() ->
-	?TRACE(mnesia:start()),
-	cama_login:start(),
+	mnesia:start(),
 	application:start(?MODULE).
 
 stop() ->

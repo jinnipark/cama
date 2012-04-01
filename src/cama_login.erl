@@ -15,7 +15,7 @@
 %%
 %% Exported Functions
 %%
--export([start/0, out/1]).
+-export([out/1]).
 -export([create_account/3, retrieve_account/1, update_account/2, update_account/1, delete_account/1]).
 -export([create_guid/1, retrieve_guid/1, update_guid/1, delete_guid/1]).
 -export([age2expire/1, quote/1]).
@@ -23,15 +23,6 @@
 %%
 %% API Functions
 %%
-start() ->
-	?TRACE(mnesia:create_table(cama_account,
-							   [{attributes, record_info(fields, cama_account)},
-								{disc_copies, [node()]}])),
-	?TRACE(mnesia:create_table(cama_guid,
-							   [{attributes, record_info(fields, cama_guid)},
-								{ram_copies, [node()]}])),
-	?TRACE(mnesia:wait_for_tables([cama_account, cama_guid], infinity)).
-
 out(Arg) ->
 	case Arg#arg.req#http_request.method of
 		'GET' -> % Present a login page.
@@ -70,7 +61,7 @@ out(Arg) ->
 									 cama_dispatcher:server_header(Arg),
 									 cama_dispatcher:location(Arg, "/"),
 									 yaws_api:setcookie("guid", Guid#cama_guid.guid, cama_dispatcher:base_path(Arg),
-														quote(age2expire(Arg#arg.state#cama_context.login_timeout)))];
+														quote(age2expire(Arg#arg.state#cama.login_timeout)))];
 								_ ->
 									[{status, 503},
 									 cama_dispatcher:server_header(Arg),

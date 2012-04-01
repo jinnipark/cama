@@ -1,4 +1,11 @@
+%%% -------------------------------------------------------------------
+%%% Author  : Sungjin Park <jinni.park@gmail.com>
+%%% Description :
+%%%
+%%% Created : Apr 1, 2012
+%%% -------------------------------------------------------------------
 -module(cama_app).
+-author("Sungjin Park <jinni.park@gmail.com>").
 
 -behaviour(application).
 

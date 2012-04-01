@@ -1,4 +1,4 @@
-%% Author: jinni
+%% Author : Sungjin Park <jinni.park@gmail.com>
 %% Created: Feb 26, 2012
 %% Description: Dispatches http requests according to url patterns.
 -module(cama_dispatcher).
@@ -25,30 +25,22 @@ out(Arg) ->
 	?DEBUG([{Arg#arg.req#http_request.method, Arg#arg.pathinfo},
 			{Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent},
 			{Arg#arg.state, Arg#arg.opaque}]),
-	{ok, Env} = application:get_env(cama, context),
-	Context = ?PROPS_TO_RECORD(Env, cama_context),
-	Arg1 = Arg#arg{state=Context},
+	{ok, Env} = application:get_env(cama, cama),
+	Cama = ?PROPS_TO_RECORD(Env, cama),
+	Arg1 = Arg#arg{state=Cama},
 	case catch string:tokens(Arg#arg.pathinfo, "/") of
-		{'EXIT', _} -> % pathinfo might be undefined
-			?TRACE(cama_home:out(Arg1));
-		[] ->
-			?TRACE(cama_home:out(Arg1));
-		["login"] ->
-			?TRACE(cama_login:out(Arg1));
-		["sessions"] ->
-			?TRACE(cama_sessions:out(Arg1));
-		["session", Sid] ->
-			?TRACE(cama_session:out(Arg1#arg{state=Context#cama_context{sid=Sid}}));
+		["session"] ->
+			?TRACE(cama_session:out(Arg1));
 		_ ->
-			?DEBUG([server_header(Arg1),
-					ssi(Arg1, Arg1#arg.pathinfo)])
+			[{status, 404},
+			 server_header(Arg1)]
 	end.
 
 server_header(Arg) ->
-	{header, "server:" ++ Arg#arg.state#cama_context.server}.
+	{header, "Server: " ++ Arg#arg.state#cama.server}.
 
 ssi(Arg, Path) ->
-	yaws_api:ssi(filename:join(code:priv_dir(cama), Arg#arg.state#cama_context.docroot), [Path]).
+	yaws_api:ssi(filename:join(code:priv_dir(cama), Arg#arg.state#cama.docroot), [Path]).
 
 location(Arg, Path) ->
 	{header, {location, base_path(Arg) ++ Path}}.

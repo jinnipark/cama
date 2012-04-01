@@ -16,34 +16,31 @@
 
 -ifdef(DEBUG).
 
-%% @doc Evaluates Exp, prints a debug message after the evaluation if 'DEBUG' is
-%% defined at compile time.
--define(DEBUG(Exp), ?DEBUG_FUN(Exp)()).
+%% @doc Print a debug message if 'DEBUG' is defined at compile time.
+-define(DEBUG(Report), error_logger:info_msg("~s: ~p~n[DEBUG ~p] ~p~n", [?MODULE, ?LINE, self(), Report])).
 
-%% @doc Evaluates Exp, prints a debug message before and after the evaluation if
+%% @doc Evaluate Exp, print a debug message before and after the evaluation if
 %% 'DEBUG' is defined at compile time.
--define(TRACE(Exp), ?TRACE_FUN(Exp)(error_logger:info_msg("~s: ~p~n[TRACE ~p] ~p", [?MODULE, ?LINE, self(), ??Exp]))).
--define(DEBUG_FUN(Exp),
-		fun() ->
-				Var = Exp, % It's essential to bind to a Var here to avoid evaluating Exp twice. 
-				?DEBUG_OUT(Var),
-				Var
-		end).
+-define(TRACE(Exp), ?TRACE_FUN(Exp)(error_logger:info_msg("~s: ~p~n[TRACE ~p] ~p~n", [?MODULE, ?LINE, self(), ??Exp]))).
 -define(TRACE_FUN(Exp),
 		fun(_Init) -> % Init is here just as a placeholder, guarantees to be evaluated before this is called.
 				Var = Exp, % It's essential to bind to a Var here to avoid evaluating Exp twice.
-				?DEBUG_OUT(Var),
+				error_logger:info_msg("~s: ~p~n[TRACE ~p] ~p~n", [?MODULE, ?LINE, self(), Var]),
 				Var
 		end).
--define(DEBUG_OUT(Msg), error_logger:info_msg("~s: ~p~n[DEBUG ~p] ~p", [?MODULE, ?LINE, self(), Msg])).
 
 -else.
 
--define(DEBUG(Exp), Exp).
+-define(DEBUG(_Report), ok).
 -define(TRACE(Exp), Exp).
 
 -endif.
 
+%% @doc Print an info message.
 -define(INFO(Report), error_logger:info_report([{?MODULE, ?LINE}, Report])).
+
+%% @doc Print a warning message.  Need to run the shell with '+W w' option.
 -define(WARNING(Report), error_logger:warning_report([{?MODULE, ?LINE}, Report])).
+
+%% @doc Print an error message.
 -define(ERROR(Report), error_logger:error_report([{?MODULE, ?LINE}, Report])).
