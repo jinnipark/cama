@@ -28,6 +28,7 @@
 				  token,
 				  created,
 				  timeout = 3600,
+				  type = basic,
 				  pid}).
 
 -record(state, {}).
@@ -63,8 +64,10 @@ out(Arg) ->
 %%          ignore                              |
 %%          {stop, StopReason}
 %% --------------------------------------------------------------------
-init(_Session) ->
-    {ok, state_name, #state{}}.
+init(Session) ->
+	Session1 = Session#?MODULE{pid = self()},
+	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(Session1) end),
+    {ok, state_name, Session1}.
 
 %% --------------------------------------------------------------------
 %% Func: StateName/2
@@ -124,7 +127,8 @@ handle_info(Info, StateName, StateData) ->
 %% Purpose: Shutdown the fsm
 %% Returns: any
 %% --------------------------------------------------------------------
-terminate(Reason, StateName, StatData) ->
+terminate(_Reason, _StateName, Session) ->
+	mnesia:transaction(fun() -> mnesia:delete({?MODULE, Session#?MODULE.id}) end),
     ok.
 
 %% --------------------------------------------------------------------
@@ -143,13 +147,18 @@ allocate(Arg, Session) ->
 	Session1 = Session#?MODULE{id = uuid:to_string(uuid:v4()),
 							   token = uuid:to_string(uuid:v4()),
 							   created = now()},
-	{ok, Pid} = gen_fsm:start(?MODULE, Session1, []),
-	Session2 = Session1#?MODULE{pid = Pid},
-	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(Session2) end),
-	Location = cama_dispatcher:base_path(Arg) ++ "/session/" ++ Session2#?MODULE.id,
+	% Query might contain secure=true (defaults to false).
+	Session2 = case yaws_api:queryvar(Arg, "secure") of
+				   {ok, "true"} ->
+					   Session1#?MODULE{type=secure};
+				   _ ->
+					   Session1
+			   end,
+	{ok, _} = gen_fsm:start(?MODULE, Session2, []),
+	Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Session2#?MODULE.id,
 	[{status, 201},
 	 cama_dispatcher:server_header(Arg),
-	 {header, "X-Type: basic"},
+	 {header, io_lib:format("X-Type: ~w", [Session2#?MODULE.type])},
 	 {header, {location, Location}},
 	 yaws_api:setcookie("token", Session2#?MODULE.token,
 						Location, age2expire(Session2#?MODULE.timeout))].
@@ -158,6 +167,3 @@ age2expire(Age) ->
 	Now = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
 	Exp = Now + Age,
 	httpd_util:rfc1123_date(calendar:gregorian_seconds_to_datetime(Exp)).
-
-quote(Str) ->
-	[$", Str, $"].
