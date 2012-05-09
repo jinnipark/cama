@@ -200,10 +200,12 @@ allocate(Arg, Session) ->
 						Location, age2expire(Session3#?MODULE.timeout))].
 
 recv(Arg, Sid) ->
+	Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Sid,
 	case mnesia:transaction(fun() -> mnesia:read({?MODULE, Sid}) end) of
-		{atomic, []} -> % session not found
+		{atomic, []} -> % session not found, might have been expired
 			[{status, 404},
-			 cama_dispatcher:server_header(Arg)];
+			 cama_dispatcher:server_header(Arg),
+			 yaws_api:setcookie("token", "", Location, age2expire(0))]; % delete token if there is any
 		{atomic, [Session]} ->
 			case catch yaws_api:find_cookie_val("token", Arg) of
 				[] -> % guest candidate
@@ -213,11 +215,9 @@ recv(Arg, Sid) ->
 				BadToken -> % unauthorized host
 					?WARNING(["unauthorized token", BadToken,
 							  Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent]),
-					Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Sid,
 					[{status, 403},
 					 cama_dispatcher:server_header(Arg),
-					 yaws_api:setcookie("token", BadToken,
-										Location, age2expire(0))]
+					 yaws_api:setcookie("token", BadToken, Location, age2expire(0))]
 			end;
 		Error -> % database error
 			?ERROR(["mnesia error", Error]),
