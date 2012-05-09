@@ -7,8 +7,8 @@
 -module(cama_session).
 -author("Sungjin Park <jinni.park@gmail.com>").
 
-
 -behaviour(gen_fsm).
+
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
@@ -23,15 +23,15 @@
 
 %% gen_fsm callbacks
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
+-export(['IDLE'/2, 'IDLE'/3]).
 
 -record(?MODULE, {id,
 				  token,
 				  created,
 				  timeout = 3600,
 				  type = basic,
-				  pid}).
-
--record(state, {}).
+				  pid,
+				  timer}).
 
 %% ====================================================================
 %% External functions
@@ -67,19 +67,24 @@ out(Arg) ->
 init(Session) ->
 	Session1 = Session#?MODULE{pid = self()},
 	{atomic, ok} = mnesia:transaction(fun() -> mnesia:write(Session1) end),
-    {ok, state_name, Session1}.
+	Session2 = Session1#?MODULE{timer = gen_fsm:start_timer(Session1#?MODULE.timeout*1000, expired)},
+	?INFO(["session initiated", Session2]),
+    {ok, 'IDLE', Session2}.
 
 %% --------------------------------------------------------------------
-%% Func: StateName/2
+%% Func: 'IDLE'/2
 %% Returns: {next_state, NextStateName, NextStateData}          |
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-state_name(Event, StateData) ->
-    {next_state, state_name, StateData}.
+'IDLE'({timeout, Timer, _}, StateData = #?MODULE{timer = Timer}) ->
+	{stop, normal, StateData};
+'IDLE'(Event, StateData) ->
+	?WARNING(["undefined async event", Event]),
+    {next_state, 'IDLE', StateData}.
 
 %% --------------------------------------------------------------------
-%% Func: StateName/3
+%% Func: 'IDLE'/3
 %% Returns: {next_state, NextStateName, NextStateData}            |
 %%          {next_state, NextStateName, NextStateData, Timeout}   |
 %%          {reply, Reply, NextStateName, NextStateData}          |
@@ -87,9 +92,10 @@ state_name(Event, StateData) ->
 %%          {stop, Reason, NewStateData}                          |
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
-state_name(Event, From, StateData) ->
+'IDLE'(Event, From, StateData) ->
+	?WARNING(["undefined sync event", Event, From]),
     Reply = ok,
-    {reply, Reply, state_name, StateData}.
+    {reply, Reply, 'IDLE', StateData}.
 
 %% --------------------------------------------------------------------
 %% Func: handle_event/3
@@ -98,6 +104,7 @@ state_name(Event, From, StateData) ->
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
 handle_event(Event, StateName, StateData) ->
+	?WARNING(["undefined anonymous async event", Event]),
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -109,7 +116,8 @@ handle_event(Event, StateName, StateData) ->
 %%          {stop, Reason, NewStateData}                          |
 %%          {stop, Reason, Reply, NewStateData}
 %% --------------------------------------------------------------------
-handle_sync_event(Event, From, StateName, StateData) ->
+handle_sync_event(Event, _From, StateName, StateData) ->
+	?WARNING(["undefined anonymous sync event", Event]),
     Reply = ok,
     {reply, Reply, StateName, StateData}.
 
@@ -119,7 +127,7 @@ handle_sync_event(Event, From, StateName, StateData) ->
 %%          {next_state, NextStateName, NextStateData, Timeout} |
 %%          {stop, Reason, NewStateData}
 %% --------------------------------------------------------------------
-handle_info(Info, StateName, StateData) ->
+handle_info(_Info, StateName, StateData) ->
     {next_state, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -129,6 +137,7 @@ handle_info(Info, StateName, StateData) ->
 %% --------------------------------------------------------------------
 terminate(_Reason, _StateName, Session) ->
 	mnesia:transaction(fun() -> mnesia:delete({?MODULE, Session#?MODULE.id}) end),
+	?INFO(["session terminated", Session]),
     ok.
 
 %% --------------------------------------------------------------------
@@ -136,7 +145,7 @@ terminate(_Reason, _StateName, Session) ->
 %% Purpose: Convert process state when code is changed
 %% Returns: {ok, NewState, NewStateData}
 %% --------------------------------------------------------------------
-code_change(OldVsn, StateName, StateData, Extra) ->
+code_change(_OldVsn, StateName, StateData, _Extra) ->
     {ok, StateName, StateData}.
 
 %% --------------------------------------------------------------------
@@ -154,14 +163,26 @@ allocate(Arg, Session) ->
 				   _ ->
 					   Session1
 			   end,
-	{ok, _} = gen_fsm:start(?MODULE, Session2, []),
-	Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Session2#?MODULE.id,
+	% Query might also contain timeout=100 (seconds).
+	Session3 = case yaws_api:queryvar(Arg, "timeout") of
+				   {ok, Int} ->
+					   case string:to_integer(Int) of
+						   {error, _} ->
+							   Session2;
+						   {Timeout, _} ->
+							   Session2#?MODULE{timeout=Timeout}
+					   end;
+				   _ ->
+					   Session2
+			   end,
+	{ok, _} = gen_fsm:start(?MODULE, Session3, []),
+	Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Session3#?MODULE.id,
 	[{status, 201},
 	 cama_dispatcher:server_header(Arg),
-	 {header, io_lib:format("X-Type: ~w", [Session2#?MODULE.type])},
+	 {header, io_lib:format("X-Type: ~w", [Session3#?MODULE.type])},
 	 {header, {location, Location}},
 	 yaws_api:setcookie("token", Session2#?MODULE.token,
-						Location, age2expire(Session2#?MODULE.timeout))].
+						Location, age2expire(Session3#?MODULE.timeout))].
 
 age2expire(Age) ->
 	Now = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
