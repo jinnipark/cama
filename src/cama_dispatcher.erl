@@ -23,7 +23,7 @@
 %%
 out(Arg) ->
 	?DEBUG([{Arg#arg.req#http_request.method, Arg#arg.pathinfo},
-			{Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent},
+			{Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent, Arg#arg.headers#headers.cookie},
 			{Arg#arg.state, Arg#arg.opaque}]),
 	{ok, Env} = application:get_env(cama, cama),
 	Cama = ?PROPS_TO_RECORD(Env, cama),
@@ -31,6 +31,8 @@ out(Arg) ->
 	case catch string:tokens(Arg#arg.pathinfo, "/") of
 		["session"] ->
 			?TRACE(cama_session:out(Arg1));
+		["session", Id] ->
+			?TRACE(cama_session:out(Arg1#arg{state=Cama#cama{sid=Id}}));
 		_ ->
 			[{status, 404},
 			 server_header(Arg1)]

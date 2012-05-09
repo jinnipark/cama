@@ -31,7 +31,11 @@
 				  timeout = 3600,
 				  type = basic,
 				  pid,
-				  timer}).
+				  timer,
+				  hostr,
+				  hosts,
+				  guestr,
+				  guests}).
 
 %% ====================================================================
 %% External functions
@@ -44,14 +48,25 @@ prepare() ->
 
 out(Arg) ->
 	?DEBUG([Arg#arg.state]),
-	{ok, Env} = application:get_env(cama, ?MODULE),
-	Session = ?PROPS_TO_RECORD(Env, ?MODULE),
-	case Arg#arg.req#http_request.method of
-		'PUT' -> % allocate
-			allocate(Arg, Session);
-		_ ->
-			[{status, 405},
-			 cama_dispatcher:server_header(Arg)]
+	case Arg#arg.state#cama.sid of
+		undefined -> % allocation operation
+			{ok, Env} = application:get_env(cama, ?MODULE),
+			Session = ?PROPS_TO_RECORD(Env, ?MODULE),
+			case Arg#arg.req#http_request.method of
+				'PUT' -> % allocate
+					allocate(Arg, Session);
+				_ ->
+					[{status, 405},
+					 cama_dispatcher:server_header(Arg)]
+			end;
+		Sid -> % relay operation
+			case Arg#arg.req#http_request.method of
+				'GET' -> % recv
+					recv(Arg, Sid);
+				_ ->
+					[{status, 405},
+					 cama_dispatcher:server_header(Arg)]
+			end
 	end.
 
 %% ====================================================================
@@ -183,6 +198,44 @@ allocate(Arg, Session) ->
 	 {header, {location, Location}},
 	 yaws_api:setcookie("token", Session2#?MODULE.token,
 						Location, age2expire(Session3#?MODULE.timeout))].
+
+recv(Arg, Sid) ->
+	case mnesia:transaction(fun() -> mnesia:read({?MODULE, Sid}) end) of
+		{atomic, []} -> % session not found
+			[{status, 404},
+			 cama_dispatcher:server_header(Arg)];
+		{atomic, [Session]} ->
+			case catch yaws_api:find_cookie_val("token", Arg) of
+				[] -> % guest candidate
+					guest_recv(Arg, Session);
+				Token when Token =:= Session#?MODULE.token -> % host
+					host_recv(Arg, Session);
+				BadToken -> % unauthorized host
+					?WARNING(["unauthorized token", BadToken,
+							  Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent]),
+					Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Sid,
+					[{status, 403},
+					 cama_dispatcher:server_header(Arg),
+					 yaws_api:setcookie("token", BadToken,
+										Location, age2expire(0))]
+			end;
+		Error -> % database error
+			?ERROR(["mnesia error", Error]),
+			[{status, 500},
+			 cama_dispatcher:server_header(Arg)]
+	end.
+
+%% @todo impl
+host_recv(Arg, Session) ->
+	[{status, 200},
+	 cama_dispatcher:server_header(Arg),
+	 {content, "text/plain", "You are host!"}].
+
+%% @todo impl
+guest_recv(Arg, Session) ->
+	[{status, 200},
+	 cama_dispatcher:server_header(Arg),
+	 {content, "text/plain", "You are guest!"}].
 
 age2expire(Age) ->
 	Now = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
