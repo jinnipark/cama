@@ -10,7 +10,8 @@
   				 {login_timeout, 3600}
   				]
   		 },
-  		 {cama_session, [{timeout, 600}]}
+  		 {cama_session, [{timeout, 3600,
+  		 				  request_timeout, 600}]}
   		]
   }
  ]
