@@ -314,16 +314,10 @@ recv(Arg, Sid) ->
 			 yaws_api:setcookie("token", "", Location, age2expire(0))]; % delete token if there is any
 		{atomic, [Session]} ->
 			case catch yaws_api:find_cookie_val("token", Arg) of
-				[] -> % guest candidate
-					guest_recv(Arg, Session);
 				Token when Token =:= Session#?MODULE.token -> % host
 					host_recv(Arg, Session);
-				BadToken -> % unauthorized host
-					?WARNING(["unauthorized token", BadToken,
-							  Arg#arg.client_ip_port, Arg#arg.headers#headers.user_agent]),
-					[{status, 403},
-					 cama_dispatcher:server_header(Arg),
-					 yaws_api:setcookie("token", BadToken, Location, age2expire(0))]
+				_ -> % guest
+					guest_recv(Arg, Session)
 			end;
 		Error -> % database error
 			?ERROR(["mnesia error", Error]),
