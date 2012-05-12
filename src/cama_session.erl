@@ -346,7 +346,25 @@ host_recv(Arg, Session) ->
 						  _ ->
 							  Session#?MODULE.request_timeout
 					  end,
-			recv_loop(Arg, Timeout);
+			Location = cama_dispatcher:base_path(Arg) ++ Arg#arg.pathinfo ++ "/" ++ Session#?MODULE.id,
+			receive
+				{chunk, ContentType, Data} ->
+					[{status, 200},
+					 cama_dispatcher:server_header(Arg),
+					 yaws_api:setcookie("token", Session#?MODULE.token,
+										Location, age2expire(Session#?MODULE.timeout)),
+					 {streamcontent, ContentType, Data}];
+				{data, ContentType, Data} ->
+					[{status, 200},
+					 cama_dispatcher:server_header(Arg),
+					 {content, ContentType, Data}]
+			after Timeout*1000 ->
+					[{status, 504},
+					 cama_dispatcher:server_header(Arg),
+					 yaws_api:setcookie("token", Session#?MODULE.token,
+										Location, age2expire(Session#?MODULE.timeout)),
+					 {content, "text/plain", "request timed out"}]
+			end;
 		occupied ->
 			[{status, 409},
 			 cama_dispatcher:server_header(Arg),
@@ -372,7 +390,20 @@ guest_recv(Arg, Session) ->
 						  _ ->
 							  Session#?MODULE.request_timeout
 					  end,
-			recv_loop(Arg, Timeout);
+			receive
+				{chunk, ContentType, Data} ->
+					[{status, 200},
+					 cama_dispatcher:server_header(Arg),
+					 {streamcontent, ContentType, Data}];
+				{data, ContentType, Data} ->
+					[{status, 200},
+					 cama_dispatcher:server_header(Arg),
+					 {content, ContentType, Data}]
+			after Timeout*1000 ->
+					[{status, 504},
+					 cama_dispatcher:server_header(Arg),
+					 {content, "text/plain", "request timed out"}]
+			end;
 		occupied ->
 			[{status, 409},
 			 cama_dispatcher:server_header(Arg),
@@ -381,22 +412,6 @@ guest_recv(Arg, Session) ->
 			[{status, 500},
 			 cama_dispatcher:server_header(Arg),
 			 {content, "text/plain", "session doesn't resond"}]
-	end.
-
-recv_loop(Arg, Timeout) ->
-	receive
-		{chunk, ContentType, Data} ->
-			[{status, 200},
-			 cama_dispatcher:server_header(Arg),
-			 {streamcontent, ContentType, Data}];
-		{data, ContentType, Data} ->
-			[{status, 200},
-			 cama_dispatcher:server_header(Arg),
-			 {content, ContentType, Data}]
-	after Timeout*1000 ->
-			[{status, 504},
-			 cama_dispatcher:server_header(Arg),
-			 {content, "text/plain", "request timed out"}]
 	end.
 
 age2expire(Age) ->
